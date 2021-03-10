@@ -2,6 +2,7 @@
 
 const express = require("express");
 const mongoose = require('mongoose');
+var _ = require('lodash');
 const path = require("path");
 
 const date = require(path.join(__dirname, 'date.js'));
@@ -15,15 +16,17 @@ app.use(express.json());
 app.use(express.urlencoded({extended:true})); //Used to parse JSON bodies
 app.use(express.static("public"));
 
+// const values
+const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 // connect to mongoose
 mongoose.connect('mongodb://localhost:27017/todolistDB', {useNewUrlParser: true, useUnifiedTopology: true});
 const db = mongoose.connection;
+// default home item schema
 const itemSchema = new mongoose.Schema({
   name: String
 });
 const Item = mongoose.model("item", itemSchema);
 
-// const workItems = [];
 const defaultItem1 = new Item({
   name: 'Buy Food'
 });
@@ -34,15 +37,25 @@ const defaultItem3 = new Item({
   name: 'Eat Food'
 });
 
+const defaultItems = [defaultItem1, defaultItem2, defaultItem3];
+
+// custom list schema
+const listSchema = new mongoose.Schema({
+  name: String, // custom list name
+  items: [itemSchema] // subschema
+});
+
+const list = mongoose.model("list", listSchema);
+
+// home route section
 app.get("/", function(req, res) {
   const day = date.getDate();
-  const items = [];
   Item.find({},(error,docs)=>{
     if(error){
       console.log(error);
     }else{
       if(docs.length==0){ // insert default list items
-        Item.insertMany([defaultItem1, defaultItem2, defaultItem3],(err)=>{
+        Item.insertMany(defaultItems, (err)=>{
           console.log(err);
         });
         res.redirect('/');
@@ -50,24 +63,46 @@ app.get("/", function(req, res) {
         res.render("list", {listTitle: day, newListItems: docs});
       }
     }
-
   });
 });
 
 // post to add items
 app.post("/", function(req, res){
   const item = req.body.newItem;
-  console.log(req.body.list);
-  if (req.body.list === "Work") {
-    workItems.push(item);
-    res.redirect("/work");
-  } else {
-    const newItem = new Item({
-      name: item
-    });
+  const listName = req.body.list.split(",").join(""); 
+  // get rid of the ',', but the custom list remains the same
+
+  const newItem = new Item({
+    name: item
+  });
+
+  if(weekdays.includes(listName)){ // add to home items
     newItem.save();
     res.redirect("/");
+  }else{ // add to list
+    // all list name change to lowercase
+    list.findOne({name: _.lowerCase(listName)}, (err, foundList)=>{
+      if(err){
+        console.log(err);
+      }else{
+        // console.log(foundList);
+        foundList.items.push(newItem);
+        foundList.save(); // must save again
+        const redirectRoute = "/" + listName;
+        res.redirect(redirectRoute);
+      }
+    });
   }
+  // if (req.body.list === "Work") {
+  //   workItems.push(item);
+  //   res.redirect("/work");
+  // } else {
+  //   const newItem = new Item({
+  //     name: item
+  //   });
+  //   newItem.save();
+  //   res.redirect("/");
+  // }
 });
 
 // post to delete items
@@ -82,14 +117,37 @@ app.post("/delete", (req, res)=>{
       }
     });
     res.redirect('/');
-  }else{ // click, delete
-
   }
 });
 
-app.get("/work", function(req,res){
-  res.render("list", {listTitle: "Work List", newListItems: workItems});
+// dynamic route name for dynamic list
+app.get("/:listName", (req, res)=>{
+  const listName = _.lowerCase(req.params.listName); // all change to lower case
+  list.findOne({name: listName},(err, foundList)=>{
+    if(err){
+      console.log(err);
+    }else{
+      // detemine wether this list exist
+      if(!foundList){ // not exist
+        const newList = new list({
+          name: listName,
+          items: defaultItems // use default items
+        });
+        newList.save();
+        // redirect
+        const redirectRoute = "/" + listName;
+        res.redirect(redirectRoute);
+      }else{ // already exists
+        const listTitle = _.capitalize(listName) + " List"; 
+        res.render("list", {listTitle: listTitle, newListItems: foundList.items});
+      }
+    }
+  });
 });
+
+// app.get("/work", function(req,res){
+//   res.render("list", {listTitle: "Work List", newListItems: workItems});
+// });
 
 app.get("/about", function(req, res){
   res.render("about");
