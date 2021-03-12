@@ -93,30 +93,34 @@ app.post("/", function(req, res){
       }
     });
   }
-  // if (req.body.list === "Work") {
-  //   workItems.push(item);
-  //   res.redirect("/work");
-  // } else {
-  //   const newItem = new Item({
-  //     name: item
-  //   });
-  //   newItem.save();
-  //   res.redirect("/");
-  // }
 });
 
 // post to delete items
 app.post("/delete", (req, res)=>{
   if(!utils.isEmpty(req.body)){ // not click, not delete
     const checkedItemId = req.body.checkbox;
-    Item.findByIdAndRemove(checkedItemId,(err)=>{
-      if(err){
-        console.log(err);
-      }else{
-        console.log("successfully delete checked item!");
-      }
-    });
-    res.redirect('/');
+    const listName = req.body.listName.split(",").join("").split(" ")[0];
+    // get the weekday name of the custom list name
+    if(weekdays.includes(listName)){ // delete from Item
+      Item.findByIdAndRemove(checkedItemId,(err)=>{
+        if(err){
+          console.log(err);
+        }else{
+          console.log("successfully delete checked item!");
+          res.redirect('/');
+        }
+      });
+    }else{ // delete from custom list
+      list.findOneAndUpdate({name: _.lowerCase(listName)}, { $pull:{items: {_id: checkedItemId}}},(err)=>{
+        if(err){
+          console.log(err);
+        }else{
+          console.log("successfully delete checked item from custom list!");
+          const redirectRoute = "/" + listName;
+          res.redirect(redirectRoute);
+        }
+      });
+    }
   }
 });
 
@@ -144,10 +148,6 @@ app.get("/:listName", (req, res)=>{
     }
   });
 });
-
-// app.get("/work", function(req,res){
-//   res.render("list", {listTitle: "Work List", newListItems: workItems});
-// });
 
 app.get("/about", function(req, res){
   res.render("about");
